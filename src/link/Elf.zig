@@ -1576,6 +1576,9 @@ fn linkWithLLD(self: *Elf, comp: *Compilation) !void {
 
                 if (target.os.tag == .openbsd) {
                     try argv.append("-lcompiler_rt");
+                    try argv.append("-lc++abi");
+                    try argv.append("-lc++");
+                    try argv.append("-lpthread");
                 }
             } else if (target.isGnuLibC()) {
                 try argv.append(comp.libunwind_static_lib.?.full_object_path);
