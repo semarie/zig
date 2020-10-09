@@ -2223,7 +2223,7 @@ pub fn selfExePath(out_buffer: []u8) SelfExePathError![]u8 {
             // XXX OpenBSD doesn't have proper support for getting the path from the running executable
             if (std.os.getenv("_")) |ksh_exefile| {
                 mem.copy(u8, out_buffer, ksh_exefile);
-                return out_buffer;
+                return out_buffer[0..ksh_exefile.len];
             } else {
                 return error.FileNotFound; // XXX
             }
