@@ -1428,7 +1428,7 @@ fn linkWithLLD(self: *Elf, comp: *Compilation) !void {
 
     if (link_in_crt) {
         const crt1o: []const u8 = o: {
-            if (target.os.tag == .netbsd) {
+            if (target.os.tag == .netbsd or target.os.tag == .openbsd) {
                 break :o "crt0.o";
             } else if (target.isAndroid()) {
                 if (self.base.options.link_mode == .Dynamic) {
@@ -1444,7 +1444,14 @@ fn linkWithLLD(self: *Elf, comp: *Compilation) !void {
         };
         try argv.append(try comp.get_libc_crt_file(arena, crt1o));
         if (target_util.libc_needs_crti_crtn(target)) {
-            try argv.append(try comp.get_libc_crt_file(arena, "crti.o"));
+            const crtio: []const u8 = o: {
+                if (target.os.tag == .openbsd) {
+                    break :o "crtbegin.o";
+                } else {
+                    break :o "crti.o";
+                }
+            };
+            try argv.append(try comp.get_libc_crt_file(arena, crtio));
         }
     }
 
@@ -1566,6 +1573,10 @@ fn linkWithLLD(self: *Elf, comp: *Compilation) !void {
                 if (target.os.tag == .freebsd or target.os.tag == .netbsd) {
                     try argv.append("-lpthread");
                 }
+
+                if (target.os.tag == .openbsd) {
+                    try argv.append("-lcompiler_rt");
+                }
             } else if (target.isGnuLibC()) {
                 try argv.append(comp.libunwind_static_lib.?.full_object_path);
                 for (glibc.libs) |lib| {
@@ -1588,10 +1599,17 @@ fn linkWithLLD(self: *Elf, comp: *Compilation) !void {
 
     // crt end
     if (link_in_crt) {
-        if (target.isAndroid()) {
-            try argv.append(try comp.get_libc_crt_file(arena, "crtend_android.o"));
-        } else if (target_util.libc_needs_crti_crtn(target)) {
-            try argv.append(try comp.get_libc_crt_file(arena, "crtn.o"));
+        if (target_util.libc_needs_crti_crtn(target)) {
+            const crtno: []const u8 = o: {
+                if (target.os.tag == .openbsd) {
+                    break :o "crtend.o";
+                } else if (target.isAndroid()) {
+                    break :o "crtend_android.o";
+                } else {
+                    break :o "crtn.o";
+                }
+            };
+            try argv.append(try comp.get_libc_crt_file(arena, crtno));
         }
     }
 
