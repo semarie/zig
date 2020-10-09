@@ -2164,6 +2164,14 @@ pub fn openSelfExe(flags: File.OpenFlags) OpenSelfExeError!File {
 
 pub const SelfExePathError = os.ReadLinkError || os.SysCtlError || os.RealPathError;
 
+fn strlenZ(s: [*:0]const u8) usize {
+    var len: usize = 0;
+    while (s[len] != '\x00') {
+        len += 1;
+    }
+    return len;
+}
+
 /// `selfExePath` except allocates the result on the heap.
 /// Caller owns returned memory.
 pub fn selfExePathAlloc(allocator: *Allocator) ![]u8 {
@@ -2221,21 +2229,49 @@ pub fn selfExePath(out_buffer: []u8) SelfExePathError![]u8 {
         },
         .openbsd => {
             // OpenBSD doesn't support getting the path of a running process
+            // so try to guess it
             if (os.argv.len >= 1) {
-                var real_path_buf: [MAX_PATH_BYTES]u8 = undefined;
-                const real_path = try std.os.realpathZ(os.argv[0], &real_path_buf);
-                if (real_path.len > out_buffer.len)
-                    return error.NameTooLong;
-                std.mem.copy(u8, out_buffer, real_path);
-                return out_buffer[0..real_path.len];
+                const argv0_len = strlenZ(os.argv[0]);
+                if (mem.indexOf(u8, os.argv[0][0..argv0_len], "/") != null) {
+                    // argv[0] is a (relative or absolute) path: use realpath(3) directly
+                    var real_path_buf: [MAX_PATH_BYTES]u8 = undefined;
+                    const real_path = try os.realpathZ(os.argv[0], &real_path_buf);
+                    if (real_path.len > out_buffer.len)
+                        return error.NameTooLong;
+                    mem.copy(u8, out_buffer, real_path);
+                    return out_buffer[0..real_path.len];
 
-            } else if (std.os.getenv("_")) |ksh_exefile| {
-                mem.copy(u8, out_buffer, ksh_exefile);
-                return out_buffer[0..ksh_exefile.len];
-                
-            } else {
-                return error.FileNotFound;
+                } else if (argv0_len != 0) {
+                    // argv[0] is not empty (and not a path): search it inside PATH
+                    const paths = std.os.getenv("PATH") orelse "";
+                    var path_it = mem.split(paths, ":");
+                    while (path_it.next()) |a_path| {
+                        var resolved_path_buf: [MAX_PATH_BYTES:0]u8 = undefined;
+                        const resolved_path = std.fmt.bufPrint(&resolved_path_buf, "{}/{}\x00", .{
+                            a_path,
+                            os.argv[0],
+                        }) catch "";
+
+                        var real_path_buf: [MAX_PATH_BYTES:0]u8 = undefined;
+                        if (os.realpathZ(&resolved_path_buf, &real_path_buf) catch null) |real_path| {
+                            // found a file, and hope it is the right file
+                            if (real_path.len > out_buffer.len)
+                                return error.NameTooLong;
+                            mem.copy(u8, out_buffer, real_path);
+                            return out_buffer[0..real_path.len];
+                        }
+                    }
+                }
             }
+
+            if (os.getenv("_")) |sh_exefile| {
+                // sh or bash sets "_" environment variable
+                mem.copy(u8, out_buffer, sh_exefile);
+                return out_buffer[0..sh_exefile.len];
+            }
+
+            // sorry, we don't find it
+            return error.FileNotFound;
         },
         .windows => {
             const utf16le_slice = selfExePathW();
