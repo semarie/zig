@@ -2220,12 +2220,21 @@ pub fn selfExePath(out_buffer: []u8) SelfExePathError![]u8 {
             return mem.spanZ(@ptrCast([*:0]u8, out_buffer));
         },
         .openbsd => {
-            // XXX OpenBSD doesn't have proper support for getting the path from the running executable
-            if (std.os.getenv("_")) |ksh_exefile| {
+            // OpenBSD doesn't support getting the path of a running process
+            if (os.argv.len >= 1) {
+                var real_path_buf: [MAX_PATH_BYTES]u8 = undefined;
+                const real_path = try std.os.realpathZ(os.argv[0], &real_path_buf);
+                if (real_path.len > out_buffer.len)
+                    return error.NameTooLong;
+                std.mem.copy(u8, out_buffer, real_path);
+                return out_buffer[0..real_path.len];
+
+            } else if (std.os.getenv("_")) |ksh_exefile| {
                 mem.copy(u8, out_buffer, ksh_exefile);
                 return out_buffer[0..ksh_exefile.len];
+                
             } else {
-                return error.FileNotFound; // XXX
+                return error.FileNotFound;
             }
         },
         .windows => {
