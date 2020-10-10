@@ -2164,12 +2164,12 @@ pub fn openSelfExe(flags: File.OpenFlags) OpenSelfExeError!File {
 
 pub const SelfExePathError = os.ReadLinkError || os.SysCtlError || os.RealPathError;
 
-fn strlenZ(s: [*:0]const u8) usize {
-    var len: usize = 0;
-    while (s[len] != '\x00') {
-        len += 1;
+fn str_containsZ(s: [*:0]const u8, c: u8) bool {
+    var i: usize = 0;
+    while (s[i] != '\x00' and s[i] != c) {
+        i += 1;
     }
-    return len;
+    return (s[i] == '/');
 }
 
 /// `selfExePath` except allocates the result on the heap.
@@ -2228,11 +2228,9 @@ pub fn selfExePath(out_buffer: []u8) SelfExePathError![]u8 {
             return mem.spanZ(@ptrCast([*:0]u8, out_buffer));
         },
         .openbsd => {
-            // OpenBSD doesn't support getting the path of a running process
-            // so try to guess it
+            // OpenBSD doesn't support getting the path of a running process, so try to guess it
             if (os.argv.len >= 1) {
-                const argv0_len = strlenZ(os.argv[0]);
-                if (mem.indexOf(u8, os.argv[0][0..argv0_len], "/") != null) {
+                if (str_containsZ(os.argv[0], '/')) {
                     // argv[0] is a (relative or absolute) path: use realpath(3) directly
                     var real_path_buf: [MAX_PATH_BYTES]u8 = undefined;
                     const real_path = try os.realpathZ(os.argv[0], &real_path_buf);
@@ -2241,7 +2239,7 @@ pub fn selfExePath(out_buffer: []u8) SelfExePathError![]u8 {
                     mem.copy(u8, out_buffer, real_path);
                     return out_buffer[0..real_path.len];
 
-                } else if (argv0_len != 0) {
+                } else if (os.argv[0][0] != '\x00') {
                     // argv[0] is not empty (and not a path): search it inside PATH
                     const paths = std.os.getenv("PATH") orelse "";
                     var path_it = mem.split(paths, ":");
