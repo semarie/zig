@@ -390,12 +390,6 @@ fn configureStage2(b: *Builder, exe: anytype, ctx: Context, need_cpp_includes: b
         } else if (exe.target.isFreeBSD()) {
             try addCxxKnownPath(b, ctx, exe, "libc++.a", null, need_cpp_includes);
             exe.linkSystemLibrary("pthread");
-        } else if (exe.target.isOpenBSD()) {
-            // XXX libc++.a/libc++abi.a isn't the right stdc++ library
-            // on all archs on OpenBSD
-            try addCxxKnownPath(b, ctx, exe, "libc++.a", null, need_cpp_includes);
-            try addCxxKnownPath(b, ctx, exe, "libc++abi.a", null, need_cpp_includes);
-            try addCxxKnownPath(b, ctx, exe, "libpthread.a", null, need_cpp_includes);
         } else if (exe.target.isDarwin()) {
             if (addCxxKnownPath(b, ctx, exe, "libgcc_eh.a", "", need_cpp_includes)) {
                 // Compiler is GCC.
